@@ -9,6 +9,7 @@ import { syncProvider } from '@/lib/providers';
 import { 
   getDailySpend, 
   getModelBreakdown, 
+  getProjectBreakdown,
   getTotalSpend, 
   getTodaySpend, 
   getWeekSpend, 
@@ -20,6 +21,7 @@ import {
 import { SpendChart } from '@/components/Chart';
 import { Stats } from '@/components/Stats';
 import { ModelTable } from '@/components/ModelTable';
+import { ProjectTable } from '@/components/ProjectTable';
 import { BudgetCard } from '@/components/BudgetCard';
 import { AnomalyBanner } from '@/components/AnomalyBanner';
 import { AlertsDropdown } from '@/components/AlertsDropdown';
@@ -129,6 +131,7 @@ export default function Dashboard() {
 
   const dailySpend = getDailySpend(usage, 30);
   const modelBreakdown = getModelBreakdown(usage);
+  const projectBreakdown = getProjectBreakdown(usage);
   const total = getTotalSpend(usage);
   const today = getTodaySpend(usage);
   const week = getWeekSpend(usage);
@@ -263,18 +266,25 @@ export default function Dashboard() {
               <SpendChart data={dailySpend} />
             </div>
 
-            <div className="card p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-medium text-[#a1a1a1]">Cost by Model</h2>
-                <button
-                  onClick={handleExport}
-                  className="text-xs text-[#555] hover:text-white flex items-center gap-1"
-                >
-                  <Download className="w-3 h-3" />
-                  Export
-                </button>
+            <div className="grid lg:grid-cols-2 gap-6">
+              <div className="card p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-sm font-medium text-[#a1a1a1]">Cost by Model</h2>
+                  <button
+                    onClick={handleExport}
+                    className="text-xs text-[#555] hover:text-white flex items-center gap-1"
+                  >
+                    <Download className="w-3 h-3" />
+                    Export
+                  </button>
+                </div>
+                <ModelTable data={modelBreakdown} />
               </div>
-              <ModelTable data={modelBreakdown} />
+              
+              <div className="card p-5">
+                <h2 className="text-sm font-medium text-[#a1a1a1] mb-4">Cost by Project</h2>
+                <ProjectTable data={projectBreakdown} />
+              </div>
             </div>
           </>
         )}

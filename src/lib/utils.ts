@@ -1,5 +1,5 @@
 import { format, subDays, parseISO, startOfMonth, isAfter } from 'date-fns';
-import type { UsageRecord, DailySpend, ModelBreakdown, Anomaly } from '@/types';
+import type { UsageRecord, DailySpend, ModelBreakdown, Anomaly, ProjectBreakdown } from '@/types';
 
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -94,6 +94,44 @@ export function getSpendByProvider(records: UsageRecord[]): { openai: number; an
   const openai = records.filter(r => r.provider === 'openai').reduce((sum, r) => sum + r.cost, 0);
   const anthropic = records.filter(r => r.provider === 'anthropic').reduce((sum, r) => sum + r.cost, 0);
   return { openai, anthropic };
+}
+
+export function getProjectBreakdown(records: UsageRecord[]): ProjectBreakdown[] {
+  const byProject = new Map<string, { 
+    projectName: string;
+    provider: 'openai' | 'anthropic'; 
+    tokens: number; 
+    cost: number;
+  }>();
+  
+  for (const r of records) {
+    const key = `${r.projectId || 'default'}-${r.provider}`;
+    const existing = byProject.get(key) || { 
+      projectName: r.projectName || r.projectId || 'Default',
+      provider: r.provider, 
+      tokens: 0, 
+      cost: 0 
+    };
+    byProject.set(key, {
+      projectName: r.projectName || existing.projectName,
+      provider: r.provider,
+      tokens: existing.tokens + r.inputTokens + r.outputTokens,
+      cost: existing.cost + r.cost,
+    });
+  }
+  
+  const totalCost = Array.from(byProject.values()).reduce((sum, p) => sum + p.cost, 0);
+  
+  return Array.from(byProject.entries())
+    .map(([projectId, data]) => ({
+      projectId: projectId.split('-')[0],
+      projectName: data.projectName,
+      provider: data.provider,
+      tokens: data.tokens,
+      cost: data.cost,
+      percentage: totalCost > 0 ? (data.cost / totalCost) * 100 : 0,
+    }))
+    .sort((a, b) => b.cost - a.cost);
 }
 
 // Anomaly detection using simple statistical analysis

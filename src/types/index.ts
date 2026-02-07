@@ -14,6 +14,14 @@ export interface UsageRecord {
   outputTokens: number;
   cost: number;
   projectId?: string;
+  projectName?: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  color: string;
+  provider: 'openai' | 'anthropic';
 }
 
 export interface DailySpend {
@@ -54,4 +62,13 @@ export interface Anomaly {
   percentageIncrease: number;
   provider?: 'openai' | 'anthropic';
   model?: string;
+}
+
+export interface ProjectBreakdown {
+  projectId: string;
+  projectName: string;
+  provider: 'openai' | 'anthropic';
+  cost: number;
+  tokens: number;
+  percentage: number;
 }
