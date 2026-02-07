@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Settings, RefreshCw, Plus, TrendingUp, Zap, Download } from 'lucide-react';
+import { Settings, RefreshCw, Plus, TrendingUp, Zap, Download, Users } from 'lucide-react';
 import { getDaysInMonth, differenceInDays, endOfMonth } from 'date-fns';
 import { storage } from '@/lib/storage';
 import { syncProvider } from '@/lib/providers';
@@ -182,6 +182,10 @@ export default function Dashboard() {
                 </button>
               </>
             )}
+            
+            <Link href="/team" className="p-2 text-[#666] hover:text-white rounded-lg hover:bg-white/[0.05]" title="Team">
+              <Users className="w-4 h-4" />
+            </Link>
             
             <Link href="/settings" className="btn btn-secondary">
               <Settings className="w-3.5 h-3.5" />
