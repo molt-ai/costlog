@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft, Eye, EyeOff, Trash2, Check, ExternalLink, Zap, Copy, ChevronRight, Bell, DollarSign, Sparkles, HelpCircle, LogIn } from 'lucide-react';
 import { storage } from '@/lib/storage';
 import { buildAuthUrl } from '@/lib/claude-oauth';
-import type { Provider, Budget, ClaudeMaxConfig, ClaudeMaxOAuth } from '@/types';
+import type { Provider, Budget, ClaudeMaxConfig, ClaudeMaxOAuth, SlackConfig } from '@/types';
 
 const PROVIDER_CONFIG = {
   openai: {
@@ -58,11 +58,20 @@ export default function SettingsPage() {
   const [claudeMaxError, setClaudeMaxError] = useState<string | null>(null);
   const [oauthLoading, setOauthLoading] = useState(false);
 
+  // Slack state
+  const [slackConfig, setSlackConfig] = useState<SlackConfig | null>(null);
+  const [slackExpanded, setSlackExpanded] = useState(false);
+  const [slackWebhookUrl, setSlackWebhookUrl] = useState('');
+  const [slackChannelName, setSlackChannelName] = useState('');
+  const [testingSlack, setTestingSlack] = useState(false);
+  const [slackError, setSlackError] = useState<string | null>(null);
+
   useEffect(() => {
     setProviders(storage.getProviders());
     setBudget(storage.getBudget());
     setClaudeMaxConfig(storage.getClaudeMaxConfig());
     setClaudeMaxOAuth(storage.getClaudeMaxOAuth());
+    setSlackConfig(storage.getSlackConfig());
     
     // Request notification permission
     if ('Notification' in window && Notification.permission === 'default') {
@@ -196,6 +205,59 @@ export default function SettingsPage() {
     }
   };
 
+  const testAndSaveSlack = async () => {
+    if (!slackWebhookUrl) return;
+    
+    setTestingSlack(true);
+    setSlackError(null);
+    
+    try {
+      // Test the webhook by sending a message
+      const res = await fetch(slackWebhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: '🎉 CostLog connected successfully! You\'ll receive alerts here.',
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: '🎉 *CostLog connected successfully!*\nYou\'ll receive cost alerts in this channel.',
+              },
+            },
+          ],
+        }),
+      });
+      
+      if (!res.ok) {
+        throw new Error('Invalid webhook URL');
+      }
+      
+      const config: SlackConfig = {
+        webhookUrl: slackWebhookUrl,
+        channelName: slackChannelName || undefined,
+        enabled: true,
+      };
+      storage.saveSlackConfig(config);
+      setSlackConfig(config);
+      setSlackExpanded(false);
+      flashSaved();
+    } catch (e) {
+      setSlackError(e instanceof Error ? e.message : 'Failed to connect');
+    } finally {
+      setTestingSlack(false);
+    }
+  };
+
+  const removeSlack = () => {
+    storage.removeSlackConfig();
+    setSlackConfig(null);
+    setSlackWebhookUrl('');
+    setSlackChannelName('');
+    flashSaved();
+  };
+
   const existingIds = new Set(providers.map(p => p.id));
   const availableProviders = (Object.keys(PROVIDER_CONFIG) as ProviderId[]).filter(id => !existingIds.has(id));
 
@@ -298,6 +360,125 @@ export default function SettingsPage() {
               </div>
             )}
           </div>
+        </section>
+
+        {/* Slack Integration */}
+        <section id="slack">
+          <h2 className="text-xs font-medium text-[#666] uppercase tracking-wider mb-4 flex items-center gap-2">
+            <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="currentColor">
+              <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+            </svg>
+            Slack Integration
+          </h2>
+          
+          {slackConfig?.enabled ? (
+            <div className="card p-4 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#4A154B] to-[#611f69] flex items-center justify-center">
+                <svg viewBox="0 0 24 24" className="w-4 h-4 text-white" fill="currentColor">
+                  <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313z"/>
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                  <span className="text-sm font-medium">Slack Connected</span>
+                </div>
+                {slackConfig.channelName && (
+                  <p className="text-[#444] text-xs mt-0.5">#{slackConfig.channelName}</p>
+                )}
+              </div>
+              <button
+                onClick={removeSlack}
+                className="p-2 text-[#444] hover:text-red-400 rounded-lg hover:bg-red-500/10"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <div className="card overflow-hidden">
+              <button
+                onClick={() => setSlackExpanded(!slackExpanded)}
+                className="w-full p-4 flex items-center gap-3 hover:bg-white/[0.02] transition-colors"
+              >
+                <span className="w-2 h-2 rounded-full bg-[#4A154B]" />
+                <span className="font-medium text-sm">Connect Slack</span>
+                <ChevronRight className={`w-4 h-4 text-[#444] ml-auto transition-transform ${slackExpanded ? 'rotate-90' : ''}`} />
+              </button>
+              
+              {slackExpanded && (
+                <div className="px-4 pb-4 space-y-4 border-t border-white/[0.04]">
+                  <div className="pt-4">
+                    <p className="text-xs text-[#888] mb-4">
+                      Get cost alerts delivered directly to a Slack channel.
+                    </p>
+                    
+                    <ol className="space-y-2 mb-4">
+                      <li className="flex items-start gap-2.5 text-sm">
+                        <span className="w-5 h-5 rounded-full bg-white/[0.06] flex items-center justify-center text-xs text-[#666] flex-shrink-0 mt-0.5">1</span>
+                        <span className="text-[#aaa]">Go to your Slack workspace settings</span>
+                      </li>
+                      <li className="flex items-start gap-2.5 text-sm">
+                        <span className="w-5 h-5 rounded-full bg-white/[0.06] flex items-center justify-center text-xs text-[#666] flex-shrink-0 mt-0.5">2</span>
+                        <span className="text-[#aaa]">Create an Incoming Webhook for a channel</span>
+                      </li>
+                      <li className="flex items-start gap-2.5 text-sm">
+                        <span className="w-5 h-5 rounded-full bg-white/[0.06] flex items-center justify-center text-xs text-[#666] flex-shrink-0 mt-0.5">3</span>
+                        <span className="text-[#aaa]">Copy the webhook URL and paste below</span>
+                      </li>
+                    </ol>
+                    
+                    <a
+                      href="https://api.slack.com/messaging/webhooks"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 w-full py-3 px-4 bg-[#4A154B] hover:bg-[#611f69] text-white font-medium text-sm rounded-lg transition-colors"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      Open Slack Webhooks Guide
+                    </a>
+                  </div>
+                  
+                  {slackError && (
+                    <div className="text-sm text-red-400 bg-red-500/10 px-3 py-2 rounded-lg">
+                      {slackError}
+                    </div>
+                  )}
+                  
+                  <div className="space-y-3 pt-2 border-t border-white/[0.04]">
+                    <div>
+                      <label className="text-xs text-[#666] block mb-2">Webhook URL</label>
+                      <input
+                        type="url"
+                        value={slackWebhookUrl}
+                        onChange={(e) => setSlackWebhookUrl(e.target.value)}
+                        placeholder="https://hooks.slack.com/services/..."
+                        className="w-full px-3 py-2.5 text-sm bg-[#0a0a0a] border border-white/[0.08] rounded-lg text-white placeholder-[#444] font-mono focus:border-[#4A154B]"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="text-xs text-[#666] block mb-2">Channel Name (optional)</label>
+                      <input
+                        type="text"
+                        value={slackChannelName}
+                        onChange={(e) => setSlackChannelName(e.target.value)}
+                        placeholder="#cost-alerts"
+                        className="w-full px-3 py-2.5 text-sm bg-[#0a0a0a] border border-white/[0.08] rounded-lg text-white placeholder-[#444] focus:border-[#4A154B]"
+                      />
+                    </div>
+                    
+                    <button
+                      onClick={testAndSaveSlack}
+                      disabled={!slackWebhookUrl || testingSlack}
+                      className="w-full px-4 py-2.5 bg-[#4A154B] hover:bg-[#611f69] disabled:bg-[#1a1a1a] disabled:text-[#555] text-white text-sm font-medium rounded-lg transition-colors"
+                    >
+                      {testingSlack ? 'Testing connection...' : 'Connect Slack'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </section>
 
         {/* Connected Providers */}

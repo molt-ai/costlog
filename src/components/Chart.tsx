@@ -49,8 +49,8 @@ export function SpendChart({ data }: ChartProps) {
             labelStyle={{ color: '#888', marginBottom: '4px' }}
             itemStyle={{ color: '#fff', padding: '2px 0' }}
             labelFormatter={(d) => format(parseISO(d as string), 'MMMM d, yyyy')}
-            formatter={(value: number, name: string) => [
-              `$${value.toFixed(2)}`,
+            formatter={(value, name) => [
+              `$${(value as number).toFixed(2)}`,
               name === 'openai' ? 'OpenAI' : 'Anthropic'
             ]}
           />

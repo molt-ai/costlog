@@ -98,3 +98,47 @@ export interface ClaudeMaxUsage {
   } | null;
   lastUpdated: string;
 }
+
+// Alert Rules System
+export type AlertTriggerType = 'spend_threshold' | 'spike' | 'daily_limit' | 'model_limit';
+export type AlertPeriod = 'daily' | 'weekly' | 'monthly';
+export type AlertChannel = 'email' | 'slack' | 'webhook' | 'browser';
+
+export interface AlertRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  triggerType: AlertTriggerType;
+  threshold: number; // Dollar amount or percentage depending on type
+  period: AlertPeriod;
+  provider?: 'openai' | 'anthropic' | 'all';
+  model?: string; // Optional: specific model
+  channels: AlertChannel[];
+  recipients: AlertRecipient[];
+  lastTriggered?: string;
+  createdAt: string;
+}
+
+export interface AlertRecipient {
+  id: string;
+  type: 'email' | 'slack' | 'webhook';
+  value: string; // email address, slack webhook URL, or custom webhook URL
+  name?: string; // Display name
+  verified?: boolean;
+}
+
+export interface SlackConfig {
+  webhookUrl: string;
+  channelName?: string;
+  enabled: boolean;
+}
+
+export interface TeamMember {
+  id: string;
+  email: string;
+  name?: string;
+  role: 'owner' | 'admin' | 'member';
+  alertSubscriptions: string[]; // Alert rule IDs
+  invitedAt: string;
+  joinedAt?: string;
+}
