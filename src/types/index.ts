@@ -79,6 +79,14 @@ export interface ClaudeMaxConfig {
   enabled: boolean;
 }
 
+export interface ClaudeMaxOAuth {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+  orgId: string;
+  enabled: boolean;
+}
+
 export interface ClaudeMaxUsage {
   fiveHour: {
     utilization: number;

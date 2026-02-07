@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Zap, RefreshCw, Clock, AlertTriangle } from 'lucide-react';
 import { storage } from '@/lib/storage';
+import { refreshAccessToken } from '@/lib/claude-oauth';
 import type { ClaudeMaxUsage } from '@/types';
 
 function formatTimeRemaining(resetTime: string | null): string {
@@ -81,8 +82,11 @@ export default function ClaudeMaxCard() {
   const [hasConfig, setHasConfig] = useState(false);
 
   const fetchUsage = useCallback(async () => {
+    // Check for OAuth tokens first, then fall back to manual config
+    const oauth = storage.getClaudeMaxOAuth();
     const config = storage.getClaudeMaxConfig();
-    if (!config || !config.enabled) {
+    
+    if ((!oauth || !oauth.enabled) && (!config || !config.enabled)) {
       setHasConfig(false);
       return;
     }
@@ -92,12 +96,39 @@ export default function ClaudeMaxCard() {
     setError(null);
     
     try {
+      let accessToken = oauth?.accessToken;
+      let orgId = oauth?.orgId || config?.orgId;
+      
+      // Check if OAuth token needs refresh
+      if (oauth && oauth.expiresAt < Date.now()) {
+        try {
+          const refreshed = await refreshAccessToken(oauth.refreshToken);
+          accessToken = refreshed.accessToken;
+          
+          // Update stored tokens
+          storage.saveClaudeMaxOAuth({
+            ...oauth,
+            accessToken: refreshed.accessToken,
+            expiresAt: Date.now() + (refreshed.expiresIn * 1000),
+          });
+        } catch (refreshError) {
+          console.error('Token refresh failed:', refreshError);
+          // Clear OAuth and fall back to manual config if available
+          if (config?.enabled) {
+            accessToken = undefined;
+          } else {
+            throw new Error('Session expired. Please reconnect Claude Max.');
+          }
+        }
+      }
+      
       const res = await fetch('/api/claude-max', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          orgId: config.orgId,
-          sessionKey: config.sessionKey,
+          orgId,
+          accessToken: accessToken,
+          sessionKey: !accessToken ? config?.sessionKey : undefined,
         }),
       });
       
@@ -123,9 +154,10 @@ export default function ClaudeMaxCard() {
     const cached = storage.getClaudeMaxUsage();
     if (cached) setUsage(cached);
     
-    // Check if configured
+    // Check if configured (OAuth or manual)
+    const oauth = storage.getClaudeMaxOAuth();
     const config = storage.getClaudeMaxConfig();
-    setHasConfig(!!config?.enabled);
+    setHasConfig(!!oauth?.enabled || !!config?.enabled);
     
     // Fetch fresh data
     fetchUsage();

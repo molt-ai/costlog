@@ -2,24 +2,36 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const { orgId, sessionKey } = await request.json();
+    const body = await request.json();
+    const { orgId, sessionKey, accessToken } = body;
 
-    if (!orgId || !sessionKey) {
+    // Support both OAuth tokens and session cookies
+    if (!orgId || (!sessionKey && !accessToken)) {
       return NextResponse.json(
-        { error: 'Missing orgId or sessionKey' },
+        { error: 'Missing orgId or authentication' },
         { status: 400 }
       );
+    }
+
+    // Build headers based on auth method
+    const headers: Record<string, string> = {
+      'Accept': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+    };
+
+    if (accessToken) {
+      // OAuth token method
+      headers['Authorization'] = `Bearer ${accessToken}`;
+    } else {
+      // Session cookie method
+      headers['Cookie'] = `sessionKey=${sessionKey}`;
     }
 
     const response = await fetch(
       `https://claude.ai/api/organizations/${orgId}/usage`,
       {
         method: 'GET',
-        headers: {
-          'Cookie': `sessionKey=${sessionKey}`,
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-          'Accept': 'application/json',
-        },
+        headers,
       }
     );
 

@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Eye, EyeOff, Trash2, Check, ExternalLink, Zap, Copy, ChevronRight, Bell, DollarSign, Sparkles, HelpCircle } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Trash2, Check, ExternalLink, Zap, Copy, ChevronRight, Bell, DollarSign, Sparkles, HelpCircle, LogIn } from 'lucide-react';
 import { storage } from '@/lib/storage';
-import type { Provider, Budget, ClaudeMaxConfig } from '@/types';
+import { buildAuthUrl } from '@/lib/claude-oauth';
+import type { Provider, Budget, ClaudeMaxConfig, ClaudeMaxOAuth } from '@/types';
 
 const PROVIDER_CONFIG = {
   openai: {
@@ -48,17 +49,20 @@ export default function SettingsPage() {
   
   // Claude Max state
   const [claudeMaxConfig, setClaudeMaxConfig] = useState<ClaudeMaxConfig | null>(null);
+  const [claudeMaxOAuth, setClaudeMaxOAuth] = useState<ClaudeMaxOAuth | null>(null);
   const [claudeMaxExpanded, setClaudeMaxExpanded] = useState(false);
   const [claudeMaxOrgId, setClaudeMaxOrgId] = useState('');
   const [claudeMaxSessionKey, setClaudeMaxSessionKey] = useState('');
   const [showClaudeMaxKey, setShowClaudeMaxKey] = useState(false);
   const [testingClaudeMax, setTestingClaudeMax] = useState(false);
   const [claudeMaxError, setClaudeMaxError] = useState<string | null>(null);
+  const [oauthLoading, setOauthLoading] = useState(false);
 
   useEffect(() => {
     setProviders(storage.getProviders());
     setBudget(storage.getBudget());
     setClaudeMaxConfig(storage.getClaudeMaxConfig());
+    setClaudeMaxOAuth(storage.getClaudeMaxOAuth());
     
     // Request notification permission
     if ('Notification' in window && Notification.permission === 'default') {
@@ -166,10 +170,30 @@ export default function SettingsPage() {
 
   const removeClaudeMax = () => {
     storage.removeClaudeMaxConfig();
+    storage.removeClaudeMaxOAuth();
     setClaudeMaxConfig(null);
+    setClaudeMaxOAuth(null);
     setClaudeMaxOrgId('');
     setClaudeMaxSessionKey('');
     flashSaved();
+  };
+
+  const startOAuthFlow = async () => {
+    setOauthLoading(true);
+    try {
+      const redirectUri = `${window.location.origin}/auth/claude/callback`;
+      const { url, verifier, state } = await buildAuthUrl(redirectUri);
+      
+      // Store verifier and state in sessionStorage for the callback
+      sessionStorage.setItem('claude_oauth_verifier', verifier);
+      sessionStorage.setItem('claude_oauth_state', state);
+      
+      // Redirect to Claude OAuth
+      window.location.href = url;
+    } catch (e) {
+      setClaudeMaxError(e instanceof Error ? e.message : 'Failed to start OAuth');
+      setOauthLoading(false);
+    }
   };
 
   const existingIds = new Set(providers.map(p => p.id));
@@ -335,7 +359,7 @@ export default function SettingsPage() {
             Claude Max Subscription
           </h2>
           
-          {claudeMaxConfig?.enabled ? (
+          {(claudeMaxOAuth?.enabled || claudeMaxConfig?.enabled) ? (
             <div className="card p-4 flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
                 <Zap className="w-4 h-4 text-white" />
@@ -344,9 +368,12 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
                   <span className="text-sm font-medium">Claude Max Connected</span>
+                  {claudeMaxOAuth?.enabled && (
+                    <span className="text-xs text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded">OAuth</span>
+                  )}
                 </div>
                 <p className="text-[#444] text-xs font-mono mt-0.5 truncate">
-                  Org: {claudeMaxConfig.orgId.slice(0, 8)}...
+                  Org: {(claudeMaxOAuth?.orgId || claudeMaxConfig?.orgId || '').slice(0, 8)}...
                 </p>
               </div>
               <button
@@ -370,17 +397,31 @@ export default function SettingsPage() {
               {claudeMaxExpanded && (
                 <div className="px-4 pb-4 space-y-4 border-t border-white/[0.04]">
                   <div className="pt-4">
-                    <p className="text-xs text-[#888] mb-3">
+                    <p className="text-xs text-[#888] mb-4">
                       Track your Claude Max subscription usage (5-hour windows and weekly limits).
                     </p>
                     
-                    <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 mb-4">
-                      <p className="text-xs text-blue-400 flex items-start gap-2">
-                        <HelpCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                        <span>
-                          To find your credentials: Open claude.ai → DevTools (F12) → Application → Cookies → Copy <code className="bg-blue-500/20 px-1 rounded">lastActiveOrg</code> and <code className="bg-blue-500/20 px-1 rounded">sessionKey</code> values.
-                        </span>
-                      </p>
+                    {/* OAuth Button - Primary Method */}
+                    <button
+                      onClick={startOAuthFlow}
+                      disabled={oauthLoading}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 disabled:from-[#333] disabled:to-[#333] text-white font-medium text-sm rounded-xl transition-all shadow-lg shadow-purple-500/20"
+                    >
+                      <LogIn className="w-4 h-4" />
+                      {oauthLoading ? 'Redirecting...' : 'Sign in with Claude'}
+                    </button>
+                    
+                    <p className="text-xs text-[#555] text-center mt-2">
+                      Securely connects via Claude OAuth — works on any device
+                    </p>
+                    
+                    <div className="relative my-4">
+                      <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-white/[0.06]"></div>
+                      </div>
+                      <div className="relative flex justify-center text-xs">
+                        <span className="bg-[#141414] px-2 text-[#555]">or use manual setup</span>
+                      </div>
                     </div>
                   </div>
                   
@@ -391,8 +432,17 @@ export default function SettingsPage() {
                   )}
                   
                   <div className="space-y-3">
+                    <div className="bg-white/[0.02] border border-white/[0.06] rounded-lg p-3 mb-2">
+                      <p className="text-xs text-[#666] flex items-start gap-2">
+                        <HelpCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                        <span>
+                          DevTools → Application → Cookies → Copy <code className="bg-white/[0.08] px-1 rounded">lastActiveOrg</code> and <code className="bg-white/[0.08] px-1 rounded">sessionKey</code>
+                        </span>
+                      </p>
+                    </div>
+                    
                     <div>
-                      <label className="text-xs text-[#666] block mb-2">Organization ID (lastActiveOrg)</label>
+                      <label className="text-xs text-[#666] block mb-2">Organization ID</label>
                       <input
                         type="text"
                         value={claudeMaxOrgId}
@@ -427,9 +477,9 @@ export default function SettingsPage() {
                     <button
                       onClick={testAndSaveClaudeMax}
                       disabled={!claudeMaxOrgId || !claudeMaxSessionKey || testingClaudeMax}
-                      className="w-full px-4 py-2.5 bg-purple-500 hover:bg-purple-400 disabled:bg-[#222] disabled:text-[#555] text-white text-sm font-medium rounded-lg transition-colors"
+                      className="w-full px-4 py-2.5 bg-white/[0.08] hover:bg-white/[0.12] disabled:bg-[#1a1a1a] disabled:text-[#555] text-white text-sm font-medium rounded-lg transition-colors border border-white/[0.08]"
                     >
-                      {testingClaudeMax ? 'Testing connection...' : 'Connect Claude Max'}
+                      {testingClaudeMax ? 'Testing connection...' : 'Connect with cookies'}
                     </button>
                   </div>
                 </div>
