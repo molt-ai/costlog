@@ -72,3 +72,21 @@ export interface ProjectBreakdown {
   tokens: number;
   percentage: number;
 }
+
+export interface ClaudeMaxConfig {
+  orgId: string;
+  sessionKey: string;
+  enabled: boolean;
+}
+
+export interface ClaudeMaxUsage {
+  fiveHour: {
+    utilization: number;
+    resetsAt: string | null;
+  } | null;
+  sevenDay: {
+    utilization: number;
+    resetsAt: string | null;
+  } | null;
+  lastUpdated: string;
+}

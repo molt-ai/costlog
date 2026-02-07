@@ -25,6 +25,7 @@ import { ProjectTable } from '@/components/ProjectTable';
 import { BudgetCard } from '@/components/BudgetCard';
 import { AnomalyBanner } from '@/components/AnomalyBanner';
 import { AlertsDropdown } from '@/components/AlertsDropdown';
+import ClaudeMaxCard from '@/components/ClaudeMaxCard';
 import type { UsageRecord, Provider, Budget, Alert, Anomaly } from '@/types';
 
 export default function Dashboard() {
@@ -244,6 +245,9 @@ export default function Dashboard() {
               budget={budget} 
               daysRemaining={daysRemaining}
             />
+
+            {/* Claude Max Card */}
+            <ClaudeMaxCard />
 
             <Stats
               total={total}

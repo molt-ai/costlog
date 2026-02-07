@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Eye, EyeOff, Trash2, Check, ExternalLink, Zap, Copy, ChevronRight, Bell, DollarSign } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Trash2, Check, ExternalLink, Zap, Copy, ChevronRight, Bell, DollarSign, Sparkles, HelpCircle } from 'lucide-react';
 import { storage } from '@/lib/storage';
-import type { Provider, Budget } from '@/types';
+import type { Provider, Budget, ClaudeMaxConfig } from '@/types';
 
 const PROVIDER_CONFIG = {
   openai: {
@@ -45,10 +45,20 @@ export default function SettingsPage() {
   const [newApiKey, setNewApiKey] = useState('');
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  
+  // Claude Max state
+  const [claudeMaxConfig, setClaudeMaxConfig] = useState<ClaudeMaxConfig | null>(null);
+  const [claudeMaxExpanded, setClaudeMaxExpanded] = useState(false);
+  const [claudeMaxOrgId, setClaudeMaxOrgId] = useState('');
+  const [claudeMaxSessionKey, setClaudeMaxSessionKey] = useState('');
+  const [showClaudeMaxKey, setShowClaudeMaxKey] = useState(false);
+  const [testingClaudeMax, setTestingClaudeMax] = useState(false);
+  const [claudeMaxError, setClaudeMaxError] = useState<string | null>(null);
 
   useEffect(() => {
     setProviders(storage.getProviders());
     setBudget(storage.getBudget());
+    setClaudeMaxConfig(storage.getClaudeMaxConfig());
     
     // Request notification permission
     if ('Notification' in window && Notification.permission === 'default') {
@@ -109,6 +119,57 @@ export default function SettingsPage() {
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  };
+
+  const testAndSaveClaudeMax = async () => {
+    if (!claudeMaxOrgId || !claudeMaxSessionKey) return;
+    
+    setTestingClaudeMax(true);
+    setClaudeMaxError(null);
+    
+    try {
+      const res = await fetch('/api/claude-max', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orgId: claudeMaxOrgId,
+          sessionKey: claudeMaxSessionKey,
+        }),
+      });
+      
+      if (!res.ok) {
+        throw new Error(`API returned ${res.status}. Check your credentials.`);
+      }
+      
+      const data = await res.json();
+      if (!data.fiveHour && !data.sevenDay) {
+        throw new Error('Invalid response from Claude API');
+      }
+      
+      // Save config
+      const config: ClaudeMaxConfig = {
+        orgId: claudeMaxOrgId,
+        sessionKey: claudeMaxSessionKey,
+        enabled: true,
+      };
+      storage.saveClaudeMaxConfig(config);
+      storage.saveClaudeMaxUsage(data);
+      setClaudeMaxConfig(config);
+      setClaudeMaxExpanded(false);
+      flashSaved();
+    } catch (e) {
+      setClaudeMaxError(e instanceof Error ? e.message : 'Failed to connect');
+    } finally {
+      setTestingClaudeMax(false);
+    }
+  };
+
+  const removeClaudeMax = () => {
+    storage.removeClaudeMaxConfig();
+    setClaudeMaxConfig(null);
+    setClaudeMaxOrgId('');
+    setClaudeMaxSessionKey('');
+    flashSaved();
   };
 
   const existingIds = new Set(providers.map(p => p.id));
@@ -266,6 +327,116 @@ export default function SettingsPage() {
             </div>
           </section>
         )}
+
+        {/* Claude Max */}
+        <section>
+          <h2 className="text-xs font-medium text-[#666] uppercase tracking-wider mb-4 flex items-center gap-2">
+            <Sparkles className="w-3.5 h-3.5" />
+            Claude Max Subscription
+          </h2>
+          
+          {claudeMaxConfig?.enabled ? (
+            <div className="card p-4 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
+                <Zap className="w-4 h-4 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+                  <span className="text-sm font-medium">Claude Max Connected</span>
+                </div>
+                <p className="text-[#444] text-xs font-mono mt-0.5 truncate">
+                  Org: {claudeMaxConfig.orgId.slice(0, 8)}...
+                </p>
+              </div>
+              <button
+                onClick={removeClaudeMax}
+                className="p-2 text-[#444] hover:text-red-400 rounded-lg hover:bg-red-500/10"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <div className="card overflow-hidden">
+              <button
+                onClick={() => setClaudeMaxExpanded(!claudeMaxExpanded)}
+                className="w-full p-4 flex items-center gap-3 hover:bg-white/[0.02] transition-colors"
+              >
+                <span className="w-2 h-2 rounded-full bg-purple-500" />
+                <span className="font-medium text-sm">Connect Claude Max</span>
+                <ChevronRight className={`w-4 h-4 text-[#444] ml-auto transition-transform ${claudeMaxExpanded ? 'rotate-90' : ''}`} />
+              </button>
+              
+              {claudeMaxExpanded && (
+                <div className="px-4 pb-4 space-y-4 border-t border-white/[0.04]">
+                  <div className="pt-4">
+                    <p className="text-xs text-[#888] mb-3">
+                      Track your Claude Max subscription usage (5-hour windows and weekly limits).
+                    </p>
+                    
+                    <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 mb-4">
+                      <p className="text-xs text-blue-400 flex items-start gap-2">
+                        <HelpCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <span>
+                          To find your credentials: Open claude.ai → DevTools (F12) → Application → Cookies → Copy <code className="bg-blue-500/20 px-1 rounded">lastActiveOrg</code> and <code className="bg-blue-500/20 px-1 rounded">sessionKey</code> values.
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {claudeMaxError && (
+                    <div className="text-sm text-red-400 bg-red-500/10 px-3 py-2 rounded-lg">
+                      {claudeMaxError}
+                    </div>
+                  )}
+                  
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs text-[#666] block mb-2">Organization ID (lastActiveOrg)</label>
+                      <input
+                        type="text"
+                        value={claudeMaxOrgId}
+                        onChange={(e) => setClaudeMaxOrgId(e.target.value)}
+                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                        className="w-full px-3 py-2.5 text-sm bg-[#0a0a0a] border border-white/[0.08] rounded-lg text-white placeholder-[#444] font-mono focus:border-purple-500"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="text-xs text-[#666] block mb-2">Session Key</label>
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <input
+                            type={showClaudeMaxKey ? 'text' : 'password'}
+                            value={claudeMaxSessionKey}
+                            onChange={(e) => setClaudeMaxSessionKey(e.target.value)}
+                            placeholder="sk-ant-sid..."
+                            className="w-full px-3 py-2.5 pr-10 text-sm bg-[#0a0a0a] border border-white/[0.08] rounded-lg text-white placeholder-[#444] font-mono focus:border-purple-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowClaudeMaxKey(!showClaudeMaxKey)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[#444] hover:text-white"
+                          >
+                            {showClaudeMaxKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <button
+                      onClick={testAndSaveClaudeMax}
+                      disabled={!claudeMaxOrgId || !claudeMaxSessionKey || testingClaudeMax}
+                      className="w-full px-4 py-2.5 bg-purple-500 hover:bg-purple-400 disabled:bg-[#222] disabled:text-[#555] text-white text-sm font-medium rounded-lg transition-colors"
+                    >
+                      {testingClaudeMax ? 'Testing connection...' : 'Connect Claude Max'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
 
         {/* Add Providers */}
         {availableProviders.length > 0 && (

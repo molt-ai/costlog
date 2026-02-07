@@ -1,10 +1,12 @@
-import type { Provider, UsageRecord, Budget, Alert } from '@/types';
+import type { Provider, UsageRecord, Budget, Alert, ClaudeMaxConfig, ClaudeMaxUsage } from '@/types';
 
 const KEYS = {
   providers: 'costlog_providers',
   usage: 'costlog_usage',
   budget: 'costlog_budget',
   alerts: 'costlog_alerts',
+  claudeMax: 'costlog_claude_max',
+  claudeMaxUsage: 'costlog_claude_max_usage',
 };
 
 function safeGet<T>(key: string, fallback: T): T {
@@ -94,5 +96,24 @@ export const storage = {
   
   clearAlerts: (): void => {
     safeSet(KEYS.alerts, []);
+  },
+
+  // Claude Max
+  getClaudeMaxConfig: (): ClaudeMaxConfig | null => safeGet(KEYS.claudeMax, null),
+  
+  saveClaudeMaxConfig: (config: ClaudeMaxConfig): void => {
+    safeSet(KEYS.claudeMax, config);
+  },
+  
+  removeClaudeMaxConfig: (): void => {
+    if (typeof window === 'undefined') return;
+    localStorage.removeItem(KEYS.claudeMax);
+    localStorage.removeItem(KEYS.claudeMaxUsage);
+  },
+
+  getClaudeMaxUsage: (): ClaudeMaxUsage | null => safeGet(KEYS.claudeMaxUsage, null),
+  
+  saveClaudeMaxUsage: (usage: ClaudeMaxUsage): void => {
+    safeSet(KEYS.claudeMaxUsage, usage);
   },
 };
