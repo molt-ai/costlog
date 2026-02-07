@@ -3,7 +3,6 @@ export interface Provider {
   name: string;
   apiKey: string;
   enabled: boolean;
-  lastSync?: string;
 }
 
 export interface UsageRecord {
@@ -14,7 +13,7 @@ export interface UsageRecord {
   inputTokens: number;
   outputTokens: number;
   cost: number;
-  project?: string;
+  projectId?: string;
 }
 
 export interface DailySpend {
@@ -26,17 +25,33 @@ export interface DailySpend {
 
 export interface ModelBreakdown {
   model: string;
-  provider: string;
+  provider: 'openai' | 'anthropic';
   tokens: number;
   cost: number;
   percentage: number;
 }
 
+export interface Budget {
+  monthlyLimit: number;
+  alertThreshold: number; // percentage (0-100) to trigger alert
+  alertsEnabled: boolean;
+}
+
 export interface Alert {
   id: string;
-  type: 'daily' | 'weekly' | 'monthly';
-  threshold: number;
-  enabled: boolean;
-  notifyEmail?: string;
-  notifySlack?: string;
+  type: 'threshold' | 'anomaly' | 'limit';
+  title: string;
+  message: string;
+  date: string;
+  read: boolean;
+  severity: 'info' | 'warning' | 'critical';
+}
+
+export interface Anomaly {
+  date: string;
+  expectedSpend: number;
+  actualSpend: number;
+  percentageIncrease: number;
+  provider?: 'openai' | 'anthropic';
+  model?: string;
 }

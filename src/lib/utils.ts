@@ -1,5 +1,5 @@
-import type { UsageRecord, DailySpend, ModelBreakdown } from '@/types';
-import { format, subDays, parseISO } from 'date-fns';
+import { format, subDays, parseISO, startOfMonth, isAfter } from 'date-fns';
+import type { UsageRecord, DailySpend, ModelBreakdown, Anomaly } from '@/types';
 
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -10,42 +10,48 @@ export function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
-export function formatNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toString();
+export function formatNumber(num: number): string {
+  if (num >= 1_000_000) {
+    return (num / 1_000_000).toFixed(1) + 'M';
+  }
+  if (num >= 1_000) {
+    return (num / 1_000).toFixed(1) + 'K';
+  }
+  return num.toLocaleString();
 }
 
-export function getDailySpend(usage: UsageRecord[], days: number = 30): DailySpend[] {
+export function getDailySpend(records: UsageRecord[], days: number = 30): DailySpend[] {
   const result: DailySpend[] = [];
+  const today = new Date();
   
   for (let i = days - 1; i >= 0; i--) {
-    const date = format(subDays(new Date(), i), 'yyyy-MM-dd');
-    const dayUsage = usage.filter(u => u.date === date);
+    const date = format(subDays(today, i), 'yyyy-MM-dd');
+    const dayRecords = records.filter(r => r.date === date);
     
-    const openai = dayUsage.filter(u => u.provider === 'openai').reduce((sum, u) => sum + u.cost, 0);
-    const anthropic = dayUsage.filter(u => u.provider === 'anthropic').reduce((sum, u) => sum + u.cost, 0);
+    const openai = dayRecords
+      .filter(r => r.provider === 'openai')
+      .reduce((sum, r) => sum + r.cost, 0);
+    const anthropic = dayRecords
+      .filter(r => r.provider === 'anthropic')
+      .reduce((sum, r) => sum + r.cost, 0);
     
-    result.push({
-      date,
-      openai,
-      anthropic,
-      total: openai + anthropic,
-    });
+    result.push({ date, openai, anthropic, total: openai + anthropic });
   }
   
   return result;
 }
 
-export function getModelBreakdown(usage: UsageRecord[]): ModelBreakdown[] {
-  const byModel = new Map<string, { tokens: number; cost: number; provider: string }>();
+export function getModelBreakdown(records: UsageRecord[]): ModelBreakdown[] {
+  const byModel = new Map<string, { provider: 'openai' | 'anthropic'; tokens: number; cost: number }>();
   
-  for (const record of usage) {
-    const key = record.model;
-    const existing = byModel.get(key) || { tokens: 0, cost: 0, provider: record.provider };
-    existing.tokens += record.inputTokens + record.outputTokens;
-    existing.cost += record.cost;
-    byModel.set(key, existing);
+  for (const r of records) {
+    const key = r.model;
+    const existing = byModel.get(key) || { provider: r.provider, tokens: 0, cost: 0 };
+    byModel.set(key, {
+      provider: r.provider,
+      tokens: existing.tokens + r.inputTokens + r.outputTokens,
+      cost: existing.cost + r.cost,
+    });
   }
   
   const totalCost = Array.from(byModel.values()).reduce((sum, m) => sum + m.cost, 0);
@@ -61,23 +67,98 @@ export function getModelBreakdown(usage: UsageRecord[]): ModelBreakdown[] {
     .sort((a, b) => b.cost - a.cost);
 }
 
-export function getTotalSpend(usage: UsageRecord[]): number {
-  return usage.reduce((sum, u) => sum + u.cost, 0);
+export function getTotalSpend(records: UsageRecord[]): number {
+  return records.reduce((sum, r) => sum + r.cost, 0);
 }
 
-export function getSpendByProvider(usage: UsageRecord[]): { openai: number; anthropic: number } {
-  return {
-    openai: usage.filter(u => u.provider === 'openai').reduce((sum, u) => sum + u.cost, 0),
-    anthropic: usage.filter(u => u.provider === 'anthropic').reduce((sum, u) => sum + u.cost, 0),
-  };
-}
-
-export function getTodaySpend(usage: UsageRecord[]): number {
+export function getTodaySpend(records: UsageRecord[]): number {
   const today = format(new Date(), 'yyyy-MM-dd');
-  return usage.filter(u => u.date === today).reduce((sum, u) => sum + u.cost, 0);
+  return records.filter(r => r.date === today).reduce((sum, r) => sum + r.cost, 0);
 }
 
-export function getWeekSpend(usage: UsageRecord[]): number {
-  const weekAgo = format(subDays(new Date(), 7), 'yyyy-MM-dd');
-  return usage.filter(u => u.date >= weekAgo).reduce((sum, u) => sum + u.cost, 0);
+export function getWeekSpend(records: UsageRecord[]): number {
+  const weekAgo = subDays(new Date(), 7);
+  return records
+    .filter(r => isAfter(parseISO(r.date), weekAgo))
+    .reduce((sum, r) => sum + r.cost, 0);
+}
+
+export function getMonthSpend(records: UsageRecord[]): number {
+  const monthStart = startOfMonth(new Date());
+  return records
+    .filter(r => isAfter(parseISO(r.date), monthStart) || r.date === format(monthStart, 'yyyy-MM-dd'))
+    .reduce((sum, r) => sum + r.cost, 0);
+}
+
+export function getSpendByProvider(records: UsageRecord[]): { openai: number; anthropic: number } {
+  const openai = records.filter(r => r.provider === 'openai').reduce((sum, r) => sum + r.cost, 0);
+  const anthropic = records.filter(r => r.provider === 'anthropic').reduce((sum, r) => sum + r.cost, 0);
+  return { openai, anthropic };
+}
+
+// Anomaly detection using simple statistical analysis
+export function detectAnomalies(records: UsageRecord[], days: number = 14): Anomaly[] {
+  const dailySpend = getDailySpend(records, days);
+  const anomalies: Anomaly[] = [];
+  
+  if (dailySpend.length < 7) return anomalies;
+  
+  // Calculate rolling average (excluding last day)
+  const recentDays = dailySpend.slice(0, -1);
+  const totals = recentDays.map(d => d.total).filter(t => t > 0);
+  
+  if (totals.length < 3) return anomalies;
+  
+  const avg = totals.reduce((a, b) => a + b, 0) / totals.length;
+  const stdDev = Math.sqrt(
+    totals.reduce((sum, t) => sum + Math.pow(t - avg, 2), 0) / totals.length
+  );
+  
+  // Check last 3 days for anomalies (> 2 standard deviations)
+  const threshold = avg + (stdDev * 2);
+  const checkDays = dailySpend.slice(-3);
+  
+  for (const day of checkDays) {
+    if (day.total > threshold && day.total > avg * 1.5) {
+      const percentageIncrease = ((day.total - avg) / avg) * 100;
+      anomalies.push({
+        date: day.date,
+        expectedSpend: avg,
+        actualSpend: day.total,
+        percentageIncrease,
+      });
+    }
+  }
+  
+  return anomalies;
+}
+
+// Export to CSV
+export function exportToCSV(records: UsageRecord[]): string {
+  const headers = ['Date', 'Provider', 'Model', 'Input Tokens', 'Output Tokens', 'Cost'];
+  const rows = records
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map(r => [
+      r.date,
+      r.provider,
+      r.model,
+      r.inputTokens.toString(),
+      r.outputTokens.toString(),
+      r.cost.toFixed(4),
+    ]);
+  
+  return [headers, ...rows].map(row => row.join(',')).join('\n');
+}
+
+export function downloadCSV(records: UsageRecord[]): void {
+  const csv = exportToCSV(records);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `costlog-export-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }

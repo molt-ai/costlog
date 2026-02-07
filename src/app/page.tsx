@@ -2,25 +2,51 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Settings, RefreshCw, Plus, TrendingUp, Zap } from 'lucide-react';
+import { Settings, RefreshCw, Plus, TrendingUp, Zap, Download } from 'lucide-react';
+import { getDaysInMonth, differenceInDays, endOfMonth } from 'date-fns';
 import { storage } from '@/lib/storage';
 import { syncProvider } from '@/lib/providers';
-import { getDailySpend, getModelBreakdown, getTotalSpend, getTodaySpend, getWeekSpend, getSpendByProvider } from '@/lib/utils';
+import { 
+  getDailySpend, 
+  getModelBreakdown, 
+  getTotalSpend, 
+  getTodaySpend, 
+  getWeekSpend, 
+  getMonthSpend,
+  getSpendByProvider,
+  detectAnomalies,
+  downloadCSV,
+} from '@/lib/utils';
 import { SpendChart } from '@/components/Chart';
 import { Stats } from '@/components/Stats';
 import { ModelTable } from '@/components/ModelTable';
-import type { UsageRecord, Provider } from '@/types';
+import { BudgetCard } from '@/components/BudgetCard';
+import { AnomalyBanner } from '@/components/AnomalyBanner';
+import { AlertsDropdown } from '@/components/AlertsDropdown';
+import type { UsageRecord, Provider, Budget, Alert, Anomaly } from '@/types';
 
 export default function Dashboard() {
   const [usage, setUsage] = useState<UsageRecord[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
+  const [budget, setBudget] = useState<Budget>({ monthlyLimit: 100, alertThreshold: 80, alertsEnabled: true });
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
+  const [showAnomaly, setShowAnomaly] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
 
   useEffect(() => {
-    setUsage(storage.getUsage());
-    setProviders(storage.getProviders());
+    loadData();
   }, []);
+
+  const loadData = () => {
+    const usageData = storage.getUsage();
+    setUsage(usageData);
+    setProviders(storage.getProviders());
+    setBudget(storage.getBudget());
+    setAlerts(storage.getAlerts());
+    setAnomalies(detectAnomalies(usageData));
+  };
 
   const handleSync = async () => {
     setSyncing(true);
@@ -38,9 +64,67 @@ export default function Dashboard() {
       }
     }
     
-    setUsage(storage.getUsage());
+    loadData();
+    checkForAlerts();
     setLastSync(new Date().toLocaleTimeString());
     setSyncing(false);
+  };
+
+  const checkForAlerts = () => {
+    const monthSpend = getMonthSpend(storage.getUsage());
+    const currentBudget = storage.getBudget();
+    const percentage = (monthSpend / currentBudget.monthlyLimit) * 100;
+    
+    // Check budget threshold
+    if (currentBudget.alertsEnabled && percentage >= currentBudget.alertThreshold) {
+      const existingAlerts = storage.getAlerts();
+      const today = new Date().toISOString().split('T')[0];
+      const alreadyAlerted = existingAlerts.some(
+        a => a.type === 'threshold' && a.date.startsWith(today)
+      );
+      
+      if (!alreadyAlerted) {
+        storage.addAlert({
+          type: 'threshold',
+          title: percentage >= 100 ? 'Budget exceeded!' : 'Budget warning',
+          message: `You've used ${percentage.toFixed(0)}% of your monthly budget.`,
+          severity: percentage >= 100 ? 'critical' : 'warning',
+        });
+        loadData();
+        
+        // Browser notification
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('CostLog Budget Alert', {
+            body: `You've used ${percentage.toFixed(0)}% of your monthly budget.`,
+            icon: '/favicon.ico',
+          });
+        }
+      }
+    }
+    
+    // Check for anomalies
+    const newAnomalies = detectAnomalies(storage.getUsage());
+    if (newAnomalies.length > 0) {
+      const latest = newAnomalies[newAnomalies.length - 1];
+      const existingAlerts = storage.getAlerts();
+      const alreadyAlerted = existingAlerts.some(
+        a => a.type === 'anomaly' && a.message.includes(latest.date)
+      );
+      
+      if (!alreadyAlerted) {
+        storage.addAlert({
+          type: 'anomaly',
+          title: 'Unusual spend detected',
+          message: `${latest.date}: ${latest.percentageIncrease.toFixed(0)}% higher than average.`,
+          severity: 'warning',
+        });
+        loadData();
+      }
+    }
+  };
+
+  const handleExport = () => {
+    downloadCSV(usage);
   };
 
   const dailySpend = getDailySpend(usage, 30);
@@ -48,8 +132,11 @@ export default function Dashboard() {
   const total = getTotalSpend(usage);
   const today = getTodaySpend(usage);
   const week = getWeekSpend(usage);
+  const monthSpend = getMonthSpend(usage);
   const byProvider = getSpendByProvider(usage);
   const hasProviders = providers.some(p => p.enabled);
+  
+  const daysRemaining = differenceInDays(endOfMonth(new Date()), new Date());
 
   return (
     <div className="min-h-screen grid-bg">
@@ -63,25 +150,39 @@ export default function Dashboard() {
             <span className="font-semibold text-[15px]">CostLog</span>
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {lastSync && (
-              <span className="text-xs text-[#666]">
+              <span className="text-xs text-[#666] hidden sm:block">
                 Synced {lastSync}
               </span>
             )}
+            
             {hasProviders && (
-              <button
-                onClick={handleSync}
-                disabled={syncing}
-                className="btn btn-secondary"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
-                {syncing ? 'Syncing' : 'Sync'}
-              </button>
+              <>
+                <AlertsDropdown alerts={alerts} onUpdate={loadData} />
+                
+                <button
+                  onClick={handleExport}
+                  className="p-2 text-[#666] hover:text-white rounded-lg hover:bg-white/[0.05]"
+                  title="Export CSV"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
+                
+                <button
+                  onClick={handleSync}
+                  disabled={syncing}
+                  className="btn btn-secondary"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+                  <span className="hidden sm:inline">{syncing ? 'Syncing' : 'Sync'}</span>
+                </button>
+              </>
             )}
+            
             <Link href="/settings" className="btn btn-secondary">
               <Settings className="w-3.5 h-3.5" />
-              Settings
+              <span className="hidden sm:inline">Settings</span>
             </Link>
           </div>
         </div>
@@ -122,6 +223,21 @@ export default function Dashboard() {
           </div>
         ) : (
           <>
+            {/* Anomaly Alert */}
+            {showAnomaly && anomalies.length > 0 && (
+              <AnomalyBanner 
+                anomalies={anomalies} 
+                onDismiss={() => setShowAnomaly(false)} 
+              />
+            )}
+            
+            {/* Budget Card */}
+            <BudgetCard 
+              spent={monthSpend} 
+              budget={budget} 
+              daysRemaining={daysRemaining}
+            />
+
             <Stats
               total={total}
               today={today}
@@ -148,7 +264,16 @@ export default function Dashboard() {
             </div>
 
             <div className="card p-5">
-              <h2 className="text-sm font-medium text-[#a1a1a1] mb-4">Cost by Model</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-medium text-[#a1a1a1]">Cost by Model</h2>
+                <button
+                  onClick={handleExport}
+                  className="text-xs text-[#555] hover:text-white flex items-center gap-1"
+                >
+                  <Download className="w-3 h-3" />
+                  Export
+                </button>
+              </div>
               <ModelTable data={modelBreakdown} />
             </div>
           </>

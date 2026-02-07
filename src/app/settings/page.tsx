@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Eye, EyeOff, Trash2, Check, ExternalLink, Zap, Copy, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Trash2, Check, ExternalLink, Zap, Copy, ChevronRight, Bell, DollarSign } from 'lucide-react';
 import { storage } from '@/lib/storage';
-import type { Provider } from '@/types';
+import type { Provider, Budget } from '@/types';
 
 const PROVIDER_CONFIG = {
   openai: {
@@ -39,6 +39,7 @@ type ProviderId = keyof typeof PROVIDER_CONFIG;
 
 export default function SettingsPage() {
   const [providers, setProviders] = useState<Provider[]>([]);
+  const [budget, setBudget] = useState<Budget>({ monthlyLimit: 100, alertThreshold: 80, alertsEnabled: true });
   const [showKeys, setShowKeys] = useState<Set<string>>(new Set());
   const [activeSetup, setActiveSetup] = useState<ProviderId | null>(null);
   const [newApiKey, setNewApiKey] = useState('');
@@ -47,6 +48,12 @@ export default function SettingsPage() {
 
   useEffect(() => {
     setProviders(storage.getProviders());
+    setBudget(storage.getBudget());
+    
+    // Request notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
   }, []);
 
   const addProvider = (providerId: ProviderId) => {
@@ -86,6 +93,13 @@ export default function SettingsPage() {
     setShowKeys(next);
   };
 
+  const updateBudget = (updates: Partial<Budget>) => {
+    const newBudget = { ...budget, ...updates };
+    setBudget(newBudget);
+    storage.saveBudget(newBudget);
+    flashSaved();
+  };
+
   const flashSaved = () => {
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -123,11 +137,89 @@ export default function SettingsPage() {
       </header>
 
       <main className="max-w-xl mx-auto px-6 py-8 space-y-8">
+        {/* Budget Settings */}
+        <section>
+          <h2 className="text-xs font-medium text-[#666] uppercase tracking-wider mb-4 flex items-center gap-2">
+            <DollarSign className="w-3.5 h-3.5" />
+            Budget
+          </h2>
+          
+          <div className="card p-4 space-y-4">
+            <div>
+              <label className="text-xs text-[#666] block mb-2">Monthly budget limit</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#555]">$</span>
+                <input
+                  type="number"
+                  value={budget.monthlyLimit}
+                  onChange={(e) => updateBudget({ monthlyLimit: Math.max(0, Number(e.target.value)) })}
+                  className="w-full pl-7 pr-3 py-2.5 text-sm bg-[#0a0a0a] border border-white/[0.08] rounded-lg text-white focus:border-blue-500"
+                />
+              </div>
+            </div>
+            
+            <div>
+              <label className="text-xs text-[#666] block mb-2">Alert threshold</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min="50"
+                  max="100"
+                  step="5"
+                  value={budget.alertThreshold}
+                  onChange={(e) => updateBudget({ alertThreshold: Number(e.target.value) })}
+                  className="flex-1 accent-blue-500"
+                />
+                <span className="text-sm text-[#888] w-12 text-right">{budget.alertThreshold}%</span>
+              </div>
+              <p className="text-xs text-[#444] mt-1">
+                Get alerted when you reach {budget.alertThreshold}% of your budget
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* Notification Settings */}
+        <section>
+          <h2 className="text-xs font-medium text-[#666] uppercase tracking-wider mb-4 flex items-center gap-2">
+            <Bell className="w-3.5 h-3.5" />
+            Notifications
+          </h2>
+          
+          <div className="card p-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={budget.alertsEnabled}
+                onChange={(e) => updateBudget({ alertsEnabled: e.target.checked })}
+                className="w-4 h-4 rounded border-[#333] bg-[#0a0a0a] text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+              />
+              <div>
+                <p className="text-sm font-medium">Enable alerts</p>
+                <p className="text-xs text-[#555]">Browser notifications for budget warnings and anomalies</p>
+              </div>
+            </label>
+            
+            {'Notification' in (typeof window !== 'undefined' ? window : {}) && (
+              <div className="mt-3 pt-3 border-t border-white/[0.04]">
+                <button
+                  onClick={() => Notification.requestPermission()}
+                  className="text-xs text-blue-400 hover:text-blue-300"
+                >
+                  {Notification.permission === 'granted' 
+                    ? '✓ Browser notifications enabled' 
+                    : 'Enable browser notifications'}
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+
         {/* Connected Providers */}
         {providers.length > 0 && (
           <section>
             <h2 className="text-xs font-medium text-[#666] uppercase tracking-wider mb-4">
-              Connected
+              Connected Providers
             </h2>
             <div className="space-y-2">
               {providers.map((provider) => {
@@ -179,7 +271,7 @@ export default function SettingsPage() {
         {availableProviders.length > 0 && (
           <section>
             <h2 className="text-xs font-medium text-[#666] uppercase tracking-wider mb-4">
-              {providers.length > 0 ? 'Add Another' : 'Connect a Provider'}
+              {providers.length > 0 ? 'Add Another Provider' : 'Connect a Provider'}
             </h2>
             
             <div className="space-y-3">
@@ -189,7 +281,6 @@ export default function SettingsPage() {
                 
                 return (
                   <div key={providerId} className="card overflow-hidden">
-                    {/* Provider Header */}
                     <button
                       onClick={() => setActiveSetup(isActive ? null : providerId)}
                       className="w-full p-4 flex items-center gap-3 hover:bg-white/[0.02] transition-colors"
@@ -201,13 +292,11 @@ export default function SettingsPage() {
                       <ChevronRight className={`w-4 h-4 text-[#444] ml-auto transition-transform ${isActive ? 'rotate-90' : ''}`} />
                     </button>
                     
-                    {/* Setup Flow */}
                     {isActive && (
                       <div className="px-4 pb-4 space-y-4 border-t border-white/[0.04]">
                         <div className="pt-4">
                           <p className="text-xs text-[#888] mb-3">{config.note}</p>
                           
-                          {/* Steps */}
                           <ol className="space-y-2 mb-4">
                             {config.steps.map((step, i) => (
                               <li key={i} className="flex items-start gap-2.5 text-sm">
@@ -219,7 +308,6 @@ export default function SettingsPage() {
                             ))}
                           </ol>
                           
-                          {/* One-Click Link - High contrast CTA */}
                           <a
                             href={config.keyUrl}
                             target="_blank"
@@ -230,7 +318,6 @@ export default function SettingsPage() {
                             Open {config.name} Admin Keys
                           </a>
                           
-                          {/* Or copy URL */}
                           <button
                             onClick={() => copyToClipboard(config.keyUrl)}
                             className="w-full mt-2 py-2 text-xs text-[#666] hover:text-[#888] flex items-center justify-center gap-1.5"
@@ -240,7 +327,6 @@ export default function SettingsPage() {
                           </button>
                         </div>
                         
-                        {/* Paste Key */}
                         <div className="pt-2 border-t border-white/[0.04]">
                           <label className="text-xs text-[#666] block mb-2">Paste your admin key</label>
                           <div className="flex gap-2">
@@ -274,17 +360,28 @@ export default function SettingsPage() {
           <h2 className="text-xs font-medium text-[#666] uppercase tracking-wider mb-4">
             Data
           </h2>
-          <button
-            onClick={() => {
-              if (confirm('Clear all usage data? This cannot be undone.')) {
-                storage.clearUsage();
-                window.location.reload();
-              }
-            }}
-            className="px-3 py-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg hover:bg-red-500/15 hover:border-red-500/30 transition-colors"
-          >
-            Clear Usage Data
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                storage.clearAlerts();
+                flashSaved();
+              }}
+              className="px-3 py-2 text-sm text-[#888] bg-white/[0.04] border border-white/[0.08] rounded-lg hover:bg-white/[0.06] transition-colors"
+            >
+              Clear Alerts
+            </button>
+            <button
+              onClick={() => {
+                if (confirm('Clear all usage data? This cannot be undone.')) {
+                  storage.clearUsage();
+                  window.location.reload();
+                }
+              }}
+              className="px-3 py-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg hover:bg-red-500/15 hover:border-red-500/30 transition-colors"
+            >
+              Clear Usage Data
+            </button>
+          </div>
         </section>
       </main>
     </div>

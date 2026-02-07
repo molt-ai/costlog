@@ -1,65 +1,98 @@
-import type { Provider, UsageRecord, Alert } from '@/types';
+import type { Provider, UsageRecord, Budget, Alert } from '@/types';
 
 const KEYS = {
-  providers: 'costlog-providers',
-  usage: 'costlog-usage',
-  alerts: 'costlog-alerts',
+  providers: 'costlog_providers',
+  usage: 'costlog_usage',
+  budget: 'costlog_budget',
+  alerts: 'costlog_alerts',
 };
 
-export const storage = {
-  getProviders: (): Provider[] => {
-    if (typeof window === 'undefined') return [];
-    const data = localStorage.getItem(KEYS.providers);
-    return data ? JSON.parse(data) : [];
-  },
+function safeGet<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const val = localStorage.getItem(key);
+    return val ? JSON.parse(val) : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
-  saveProvider: (provider: Provider) => {
+function safeSet(key: string, value: unknown): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.error('Storage error:', e);
+  }
+}
+
+export const storage = {
+  // Providers
+  getProviders: (): Provider[] => safeGet(KEYS.providers, []),
+  
+  saveProvider: (provider: Provider): void => {
     const providers = storage.getProviders();
-    const index = providers.findIndex(p => p.id === provider.id);
-    if (index >= 0) {
-      providers[index] = provider;
+    const idx = providers.findIndex(p => p.id === provider.id);
+    if (idx >= 0) {
+      providers[idx] = provider;
     } else {
       providers.push(provider);
     }
-    localStorage.setItem(KEYS.providers, JSON.stringify(providers));
+    safeSet(KEYS.providers, providers);
   },
-
-  removeProvider: (id: string) => {
+  
+  removeProvider: (id: string): void => {
     const providers = storage.getProviders().filter(p => p.id !== id);
-    localStorage.setItem(KEYS.providers, JSON.stringify(providers));
+    safeSet(KEYS.providers, providers);
   },
 
-  getUsage: (): UsageRecord[] => {
-    if (typeof window === 'undefined') return [];
-    const data = localStorage.getItem(KEYS.usage);
-    return data ? JSON.parse(data) : [];
-  },
-
-  saveUsage: (records: UsageRecord[]) => {
+  // Usage
+  getUsage: (): UsageRecord[] => safeGet(KEYS.usage, []),
+  
+  saveUsage: (records: UsageRecord[]): void => {
     const existing = storage.getUsage();
     const existingIds = new Set(existing.map(r => r.id));
     const newRecords = records.filter(r => !existingIds.has(r.id));
-    localStorage.setItem(KEYS.usage, JSON.stringify([...existing, ...newRecords]));
+    safeSet(KEYS.usage, [...existing, ...newRecords]);
+  },
+  
+  clearUsage: (): void => {
+    safeSet(KEYS.usage, []);
   },
 
-  clearUsage: () => {
-    localStorage.setItem(KEYS.usage, JSON.stringify([]));
+  // Budget
+  getBudget: (): Budget => safeGet(KEYS.budget, {
+    monthlyLimit: 100,
+    alertThreshold: 80,
+    alertsEnabled: true,
+  }),
+  
+  saveBudget: (budget: Budget): void => {
+    safeSet(KEYS.budget, budget);
   },
 
-  getAlerts: (): Alert[] => {
-    if (typeof window === 'undefined') return [];
-    const data = localStorage.getItem(KEYS.alerts);
-    return data ? JSON.parse(data) : [];
-  },
-
-  saveAlert: (alert: Alert) => {
+  // Alerts
+  getAlerts: (): Alert[] => safeGet(KEYS.alerts, []),
+  
+  addAlert: (alert: Omit<Alert, 'id' | 'date' | 'read'>): void => {
     const alerts = storage.getAlerts();
-    const index = alerts.findIndex(a => a.id === alert.id);
-    if (index >= 0) {
-      alerts[index] = alert;
-    } else {
-      alerts.push(alert);
-    }
-    localStorage.setItem(KEYS.alerts, JSON.stringify(alerts));
+    const newAlert: Alert = {
+      ...alert,
+      id: `alert-${Date.now()}`,
+      date: new Date().toISOString(),
+      read: false,
+    };
+    safeSet(KEYS.alerts, [newAlert, ...alerts].slice(0, 50)); // Keep last 50
+  },
+  
+  markAlertRead: (id: string): void => {
+    const alerts = storage.getAlerts().map(a => 
+      a.id === id ? { ...a, read: true } : a
+    );
+    safeSet(KEYS.alerts, alerts);
+  },
+  
+  clearAlerts: (): void => {
+    safeSet(KEYS.alerts, []);
   },
 };
