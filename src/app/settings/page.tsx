@@ -23,15 +23,15 @@ const PROVIDER_CONFIG = {
   anthropic: {
     name: 'Anthropic',
     color: 'amber',
-    placeholder: 'sk-ant-admin-...',
-    keyUrl: 'https://console.anthropic.com/settings/admin-keys',
+    placeholder: 'sk-ant-api03-...',
+    keyUrl: 'https://console.anthropic.com/settings/keys',
     steps: [
       'Click the link below to open Anthropic Console',
-      'Go to Settings → Admin API Keys',
-      'Click "Create Key" with Usage permissions',
+      'Click "Create Key"',
+      'Name it "CostLog" and create',
       'Copy the key and paste it here',
     ],
-    note: 'Requires an Admin Key with Usage & Cost permissions.',
+    note: 'Uses your Anthropic API key to fetch usage data.',
   },
 };
 
