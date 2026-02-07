@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Settings, RefreshCw, Plus } from 'lucide-react';
+import { Settings, RefreshCw, Plus, TrendingUp, Zap } from 'lucide-react';
 import { storage } from '@/lib/storage';
 import { syncProvider } from '@/lib/providers';
 import { getDailySpend, getModelBreakdown, getTotalSpend, getTodaySpend, getWeekSpend, getSpendByProvider } from '@/lib/utils';
@@ -52,44 +52,52 @@ export default function Dashboard() {
   const hasProviders = providers.some(p => p.enabled);
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-neutral-800">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <h1 className="text-lg font-medium">CostLog</h1>
+    <div className="min-h-screen grid-bg">
+      {/* Header */}
+      <header className="sticky top-0 z-50 backdrop-blur-xl bg-[#0a0a0a]/80 border-b border-white/[0.06]">
+        <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+              <Zap className="w-4 h-4 text-white" />
+            </div>
+            <span className="font-semibold text-[15px]">CostLog</span>
+          </div>
+          
+          <div className="flex items-center gap-3">
             {lastSync && (
-              <span className="text-xs text-neutral-500">
-                Last sync: {lastSync}
+              <span className="text-xs text-[#666]">
+                Synced {lastSync}
               </span>
             )}
             {hasProviders && (
               <button
                 onClick={handleSync}
                 disabled={syncing}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-neutral-400 bg-neutral-800 rounded-lg hover:text-white disabled:opacity-50"
+                className="btn btn-secondary"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
-                {syncing ? 'Syncing...' : 'Sync'}
+                {syncing ? 'Syncing' : 'Sync'}
               </button>
             )}
-            <Link
-              href="/settings"
-              className="p-2 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800"
-            >
-              <Settings className="w-4 h-4" />
+            <Link href="/settings" className="btn btn-secondary">
+              <Settings className="w-3.5 h-3.5" />
+              Settings
             </Link>
           </div>
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-8 space-y-8">
+      <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
         {!hasProviders ? (
-          <div className="text-center py-16">
-            <p className="text-neutral-500 mb-4">Connect your API providers to start tracking</p>
-            <Link
-              href="/settings"
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm text-white bg-neutral-800 rounded-lg hover:bg-neutral-700"
-            >
+          <div className="text-center py-24">
+            <div className="w-14 h-14 rounded-2xl bg-[#171717] border border-white/[0.06] flex items-center justify-center mx-auto mb-5">
+              <TrendingUp className="w-6 h-6 text-[#666]" />
+            </div>
+            <h2 className="text-lg font-medium mb-2">Track your AI costs</h2>
+            <p className="text-[#666] text-sm mb-6 max-w-sm mx-auto">
+              Connect your OpenAI or Anthropic account to see your API spend in one dashboard.
+            </p>
+            <Link href="/settings" className="btn btn-primary">
               <Plus className="w-4 h-4" />
               Add Provider
             </Link>
@@ -104,23 +112,25 @@ export default function Dashboard() {
               anthropic={byProvider.anthropic}
             />
 
-            <div className="bg-neutral-900 rounded-lg border border-neutral-800 p-4">
-              <h2 className="text-sm text-neutral-400 mb-4">Daily Spend</h2>
-              <SpendChart data={dailySpend} />
-              <div className="flex items-center gap-4 mt-4 text-xs">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                  <span className="text-neutral-500">OpenAI</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                  <span className="text-neutral-500">Anthropic</span>
+            <div className="card p-5">
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="text-sm font-medium text-[#a1a1a1]">Daily Spend</h2>
+                <div className="flex items-center gap-4 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span className="text-[#666]">OpenAI</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                    <span className="text-[#666]">Anthropic</span>
+                  </div>
                 </div>
               </div>
+              <SpendChart data={dailySpend} />
             </div>
 
-            <div className="bg-neutral-900 rounded-lg border border-neutral-800 p-4">
-              <h2 className="text-sm text-neutral-400 mb-4">Cost by Model</h2>
+            <div className="card p-5">
+              <h2 className="text-sm font-medium text-[#a1a1a1] mb-4">Cost by Model</h2>
               <ModelTable data={modelBreakdown} />
             </div>
           </>
