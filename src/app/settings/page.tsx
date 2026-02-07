@@ -24,14 +24,14 @@ const PROVIDER_CONFIG = {
     name: 'Anthropic',
     color: 'amber',
     placeholder: 'sk-ant-api03-...',
-    keyUrl: 'https://console.anthropic.com/settings/keys',
+    keyUrl: 'https://platform.claude.com/settings/keys',
     steps: [
-      'Click the link below to open Anthropic Console',
+      'Click the link below to open Claude Platform',
       'Click "Create Key"',
       'Name it "CostLog" and create',
       'Copy the key and paste it here',
     ],
-    note: 'Uses your Anthropic API key to fetch usage data.',
+    note: 'Tracks API usage only. Claude Code Max subscription is billed separately.',
   },
 };
 
