@@ -2,41 +2,68 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Eye, EyeOff, Trash2, Check, Plus, Zap } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Trash2, Check, ExternalLink, Zap, Copy, ChevronRight } from 'lucide-react';
 import { storage } from '@/lib/storage';
 import type { Provider } from '@/types';
 
-const PROVIDER_OPTIONS = [
-  { id: 'openai', name: 'OpenAI', placeholder: 'sk-...', color: 'emerald' },
-  { id: 'anthropic', name: 'Anthropic', placeholder: 'sk-ant-...', color: 'amber' },
-];
+const PROVIDER_CONFIG = {
+  openai: {
+    name: 'OpenAI',
+    color: 'emerald',
+    placeholder: 'sk-admin-...',
+    keyUrl: 'https://platform.openai.com/settings/organization/admin-keys',
+    steps: [
+      'Click the link below to open OpenAI Admin Keys',
+      'Click "Create new admin key"',
+      'Name it "CostLog" and click Create',
+      'Copy the key and paste it here',
+    ],
+    note: 'Requires an Admin Key (not a regular API key) to access usage data.',
+  },
+  anthropic: {
+    name: 'Anthropic',
+    color: 'amber',
+    placeholder: 'sk-ant-admin-...',
+    keyUrl: 'https://console.anthropic.com/settings/admin-keys',
+    steps: [
+      'Click the link below to open Anthropic Console',
+      'Go to Settings → Admin API Keys',
+      'Click "Create Key" with Usage permissions',
+      'Copy the key and paste it here',
+    ],
+    note: 'Requires an Admin Key with Usage & Cost permissions.',
+  },
+};
+
+type ProviderId = keyof typeof PROVIDER_CONFIG;
 
 export default function SettingsPage() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [showKeys, setShowKeys] = useState<Set<string>>(new Set());
-  const [newProvider, setNewProvider] = useState({ id: '', apiKey: '' });
+  const [activeSetup, setActiveSetup] = useState<ProviderId | null>(null);
+  const [newApiKey, setNewApiKey] = useState('');
   const [saved, setSaved] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     setProviders(storage.getProviders());
   }, []);
 
-  const addProvider = () => {
-    if (!newProvider.id || !newProvider.apiKey) return;
+  const addProvider = (providerId: ProviderId) => {
+    if (!newApiKey) return;
     
-    const option = PROVIDER_OPTIONS.find(p => p.id === newProvider.id);
-    if (!option) return;
-
+    const config = PROVIDER_CONFIG[providerId];
     const provider: Provider = {
-      id: newProvider.id,
-      name: option.name,
-      apiKey: newProvider.apiKey,
+      id: providerId,
+      name: config.name,
+      apiKey: newApiKey,
       enabled: true,
     };
 
     storage.saveProvider(provider);
     setProviders(storage.getProviders());
-    setNewProvider({ id: '', apiKey: '' });
+    setNewApiKey('');
+    setActiveSetup(null);
     flashSaved();
   };
 
@@ -55,11 +82,7 @@ export default function SettingsPage() {
 
   const toggleShowKey = (id: string) => {
     const next = new Set(showKeys);
-    if (next.has(id)) {
-      next.delete(id);
-    } else {
-      next.add(id);
-    }
+    next.has(id) ? next.delete(id) : next.add(id);
     setShowKeys(next);
   };
 
@@ -68,8 +91,14 @@ export default function SettingsPage() {
     setTimeout(() => setSaved(false), 2000);
   };
 
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
   const existingIds = new Set(providers.map(p => p.id));
-  const availableProviders = PROVIDER_OPTIONS.filter(p => !existingIds.has(p.id));
+  const availableProviders = (Object.keys(PROVIDER_CONFIG) as ProviderId[]).filter(id => !existingIds.has(id));
 
   return (
     <div className="min-h-screen grid-bg">
@@ -95,30 +124,20 @@ export default function SettingsPage() {
 
       <main className="max-w-xl mx-auto px-6 py-8 space-y-8">
         {/* Connected Providers */}
-        <section>
-          <h2 className="text-xs font-medium text-[#666] uppercase tracking-wider mb-4">
-            Connected Providers
-          </h2>
-          
-          {providers.length === 0 ? (
-            <div className="card p-8 text-center">
-              <p className="text-[#444] text-sm">No providers connected</p>
-            </div>
-          ) : (
+        {providers.length > 0 && (
+          <section>
+            <h2 className="text-xs font-medium text-[#666] uppercase tracking-wider mb-4">
+              Connected
+            </h2>
             <div className="space-y-2">
               {providers.map((provider) => {
-                const option = PROVIDER_OPTIONS.find(p => p.id === provider.id);
+                const config = PROVIDER_CONFIG[provider.id as ProviderId];
                 return (
-                  <div
-                    key={provider.id}
-                    className="card p-4 flex items-center gap-3"
-                  >
+                  <div key={provider.id} className="card p-4 flex items-center gap-3">
                     <button
                       onClick={() => toggleProvider(provider.id)}
                       className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${
-                        provider.enabled
-                          ? 'bg-blue-500 border-blue-500'
-                          : 'border-[#333] hover:border-[#444]'
+                        provider.enabled ? 'bg-blue-500 border-blue-500' : 'border-[#333] hover:border-[#444]'
                       }`}
                     >
                       {provider.enabled && <Check className="w-3 h-3 text-white" />}
@@ -127,14 +146,12 @@ export default function SettingsPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className={`w-1.5 h-1.5 rounded-full ${
-                          option?.color === 'emerald' ? 'bg-emerald-500' : 'bg-amber-500'
+                          config?.color === 'emerald' ? 'bg-emerald-500' : 'bg-amber-500'
                         }`} />
                         <span className="text-sm font-medium">{provider.name}</span>
                       </div>
                       <p className="text-[#444] text-xs font-mono mt-0.5 truncate">
-                        {showKeys.has(provider.id)
-                          ? provider.apiKey
-                          : provider.apiKey.slice(0, 12) + '••••••••'}
+                        {showKeys.has(provider.id) ? provider.apiKey : provider.apiKey.slice(0, 12) + '••••••••'}
                       </p>
                     </div>
                     
@@ -142,11 +159,7 @@ export default function SettingsPage() {
                       onClick={() => toggleShowKey(provider.id)}
                       className="p-2 text-[#444] hover:text-white rounded-lg hover:bg-white/[0.05]"
                     >
-                      {showKeys.has(provider.id) ? (
-                        <EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Eye className="w-4 h-4" />
-                      )}
+                      {showKeys.has(provider.id) ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                     
                     <button
@@ -159,53 +172,104 @@ export default function SettingsPage() {
                 );
               })}
             </div>
-          )}
-        </section>
+          </section>
+        )}
 
-        {/* Add Provider */}
+        {/* Add Providers */}
         {availableProviders.length > 0 && (
           <section>
             <h2 className="text-xs font-medium text-[#666] uppercase tracking-wider mb-4">
-              Add Provider
+              {providers.length > 0 ? 'Add Another' : 'Connect a Provider'}
             </h2>
             
-            <div className="card p-4 space-y-3">
-              <select
-                value={newProvider.id}
-                onChange={(e) => setNewProvider({ ...newProvider, id: e.target.value })}
-                className="w-full px-3 py-2.5 text-sm bg-[#0a0a0a] border border-white/[0.08] rounded-lg text-white focus:border-blue-500"
-              >
-                <option value="">Select provider</option>
-                {availableProviders.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-              
-              {newProvider.id && (
-                <>
-                  <input
-                    type="password"
-                    value={newProvider.apiKey}
-                    onChange={(e) => setNewProvider({ ...newProvider, apiKey: e.target.value })}
-                    placeholder={PROVIDER_OPTIONS.find(p => p.id === newProvider.id)?.placeholder}
-                    className="w-full px-3 py-2.5 text-sm bg-[#0a0a0a] border border-white/[0.08] rounded-lg text-white placeholder-[#444] font-mono focus:border-blue-500"
-                  />
-                  
-                  <button
-                    onClick={addProvider}
-                    disabled={!newProvider.apiKey}
-                    className="w-full btn btn-primary justify-center disabled:opacity-50"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Provider
-                  </button>
-                </>
-              )}
+            <div className="space-y-3">
+              {availableProviders.map((providerId) => {
+                const config = PROVIDER_CONFIG[providerId];
+                const isActive = activeSetup === providerId;
+                
+                return (
+                  <div key={providerId} className="card overflow-hidden">
+                    {/* Provider Header */}
+                    <button
+                      onClick={() => setActiveSetup(isActive ? null : providerId)}
+                      className="w-full p-4 flex items-center gap-3 hover:bg-white/[0.02] transition-colors"
+                    >
+                      <span className={`w-2 h-2 rounded-full ${
+                        config.color === 'emerald' ? 'bg-emerald-500' : 'bg-amber-500'
+                      }`} />
+                      <span className="font-medium text-sm">{config.name}</span>
+                      <ChevronRight className={`w-4 h-4 text-[#444] ml-auto transition-transform ${isActive ? 'rotate-90' : ''}`} />
+                    </button>
+                    
+                    {/* Setup Flow */}
+                    {isActive && (
+                      <div className="px-4 pb-4 space-y-4 border-t border-white/[0.04]">
+                        <div className="pt-4">
+                          <p className="text-xs text-[#888] mb-3">{config.note}</p>
+                          
+                          {/* Steps */}
+                          <ol className="space-y-2 mb-4">
+                            {config.steps.map((step, i) => (
+                              <li key={i} className="flex items-start gap-2.5 text-sm">
+                                <span className="w-5 h-5 rounded-full bg-white/[0.06] flex items-center justify-center text-xs text-[#666] flex-shrink-0 mt-0.5">
+                                  {i + 1}
+                                </span>
+                                <span className="text-[#aaa]">{step}</span>
+                              </li>
+                            ))}
+                          </ol>
+                          
+                          {/* One-Click Link - High contrast CTA */}
+                          <a
+                            href={config.keyUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-center gap-2 w-full py-3 px-4 bg-blue-500 hover:bg-blue-400 text-white font-medium text-sm rounded-lg transition-colors"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                            Open {config.name} Admin Keys
+                          </a>
+                          
+                          {/* Or copy URL */}
+                          <button
+                            onClick={() => copyToClipboard(config.keyUrl)}
+                            className="w-full mt-2 py-2 text-xs text-[#666] hover:text-[#888] flex items-center justify-center gap-1.5"
+                          >
+                            <Copy className="w-3 h-3" />
+                            {copied ? 'Copied!' : 'Copy link instead'}
+                          </button>
+                        </div>
+                        
+                        {/* Paste Key */}
+                        <div className="pt-2 border-t border-white/[0.04]">
+                          <label className="text-xs text-[#666] block mb-2">Paste your admin key</label>
+                          <div className="flex gap-2">
+                            <input
+                              type="password"
+                              value={newApiKey}
+                              onChange={(e) => setNewApiKey(e.target.value)}
+                              placeholder={config.placeholder}
+                              className="flex-1 px-3 py-2.5 text-sm bg-[#0a0a0a] border border-white/[0.08] rounded-lg text-white placeholder-[#444] font-mono focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
+                            />
+                            <button
+                              onClick={() => addProvider(providerId)}
+                              disabled={!newApiKey}
+                              className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:bg-[#222] disabled:text-[#555] text-white text-sm font-medium rounded-lg transition-colors"
+                            >
+                              Add
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </section>
         )}
 
-        {/* Danger Zone */}
+        {/* Data Management */}
         <section>
           <h2 className="text-xs font-medium text-[#666] uppercase tracking-wider mb-4">
             Data

@@ -3,23 +3,28 @@ import { format, subDays } from 'date-fns';
 
 // OpenAI pricing per 1M tokens (approximate, varies by model)
 const OPENAI_PRICING: Record<string, { input: number; output: number }> = {
-  'gpt-4': { input: 30, output: 60 },
-  'gpt-4-turbo': { input: 10, output: 30 },
   'gpt-4o': { input: 2.5, output: 10 },
   'gpt-4o-mini': { input: 0.15, output: 0.6 },
+  'gpt-4-turbo': { input: 10, output: 30 },
+  'gpt-4': { input: 30, output: 60 },
   'gpt-3.5-turbo': { input: 0.5, output: 1.5 },
   'o1': { input: 15, output: 60 },
   'o1-mini': { input: 3, output: 12 },
+  'o1-pro': { input: 150, output: 600 },
+  'text-embedding-3-small': { input: 0.02, output: 0 },
+  'text-embedding-3-large': { input: 0.13, output: 0 },
+  'text-embedding-ada-002': { input: 0.1, output: 0 },
   default: { input: 5, output: 15 },
 };
 
 // Anthropic pricing per 1M tokens
 const ANTHROPIC_PRICING: Record<string, { input: number; output: number }> = {
+  'claude-opus-4': { input: 15, output: 75 },
+  'claude-sonnet-4': { input: 3, output: 15 },
   'claude-3-opus': { input: 15, output: 75 },
-  'claude-3-sonnet': { input: 3, output: 15 },
-  'claude-3-haiku': { input: 0.25, output: 1.25 },
   'claude-3-5-sonnet': { input: 3, output: 15 },
   'claude-3-5-haiku': { input: 0.8, output: 4 },
+  'claude-3-haiku': { input: 0.25, output: 1.25 },
   default: { input: 3, output: 15 },
 };
 
@@ -30,7 +35,7 @@ function calculateCost(
   outputTokens: number
 ): number {
   const pricing = provider === 'openai' ? OPENAI_PRICING : ANTHROPIC_PRICING;
-  const modelKey = Object.keys(pricing).find(k => model.includes(k)) || 'default';
+  const modelKey = Object.keys(pricing).find(k => model.toLowerCase().includes(k.toLowerCase())) || 'default';
   const rates = pricing[modelKey];
   
   const inputCost = (inputTokens / 1_000_000) * rates.input;
@@ -41,29 +46,34 @@ function calculateCost(
 
 export async function fetchOpenAIUsage(apiKey: string): Promise<UsageRecord[]> {
   const records: UsageRecord[] = [];
+  const startTime = Math.floor(subDays(new Date(), 30).getTime() / 1000);
   
-  // OpenAI usage API - last 30 days
-  for (let i = 0; i < 30; i++) {
-    const date = format(subDays(new Date(), i), 'yyyy-MM-dd');
+  try {
+    // Fetch completions usage
+    const completionsRes = await fetch(
+      `https://api.openai.com/v1/organization/usage/completions?start_time=${startTime}&bucket_width=1d&group_by=model`,
+      {
+        headers: { 
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
     
-    try {
-      const res = await fetch(`https://api.openai.com/v1/usage?date=${date}`, {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      });
+    if (completionsRes.ok) {
+      const data = await completionsRes.json();
       
-      if (!res.ok) continue;
-      
-      const data = await res.json();
-      
-      if (data.data) {
-        for (const item of data.data) {
-          const model = item.snapshot_id || 'unknown';
-          const inputTokens = item.n_context_tokens_total || 0;
-          const outputTokens = item.n_generated_tokens_total || 0;
+      for (const bucket of data.data || []) {
+        const date = format(new Date(bucket.start_time * 1000), 'yyyy-MM-dd');
+        
+        for (const result of bucket.results || []) {
+          const model = result.model || 'unknown';
+          const inputTokens = result.input_tokens || 0;
+          const outputTokens = result.output_tokens || 0;
           
           if (inputTokens > 0 || outputTokens > 0) {
             records.push({
-              id: `openai-${date}-${model}`,
+              id: `openai-${date}-${model}-completions`,
               provider: 'openai',
               date,
               model,
@@ -74,21 +84,98 @@ export async function fetchOpenAIUsage(apiKey: string): Promise<UsageRecord[]> {
           }
         }
       }
-    } catch (e) {
-      console.error(`Failed to fetch OpenAI usage for ${date}:`, e);
     }
+    
+    // Fetch embeddings usage
+    const embeddingsRes = await fetch(
+      `https://api.openai.com/v1/organization/usage/embeddings?start_time=${startTime}&bucket_width=1d&group_by=model`,
+      {
+        headers: { 
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    
+    if (embeddingsRes.ok) {
+      const data = await embeddingsRes.json();
+      
+      for (const bucket of data.data || []) {
+        const date = format(new Date(bucket.start_time * 1000), 'yyyy-MM-dd');
+        
+        for (const result of bucket.results || []) {
+          const model = result.model || 'unknown';
+          const inputTokens = result.input_tokens || 0;
+          
+          if (inputTokens > 0) {
+            records.push({
+              id: `openai-${date}-${model}-embeddings`,
+              provider: 'openai',
+              date,
+              model,
+              inputTokens,
+              outputTokens: 0,
+              cost: calculateCost('openai', model, inputTokens, 0),
+            });
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Failed to fetch OpenAI usage:', e);
   }
   
   return records;
 }
 
 export async function fetchAnthropicUsage(apiKey: string): Promise<UsageRecord[]> {
-  // Note: Anthropic doesn't have a public usage API yet
-  // This is a placeholder that would need to be updated when they release one
-  // For now, users would need to manually check their dashboard or we'd parse from logs
+  const records: UsageRecord[] = [];
   
-  console.log('Anthropic usage API not yet available');
-  return [];
+  try {
+    // Anthropic Usage API - fetch daily usage
+    const startDate = format(subDays(new Date(), 30), 'yyyy-MM-dd');
+    const endDate = format(new Date(), 'yyyy-MM-dd');
+    
+    const res = await fetch(
+      `https://api.anthropic.com/v1/admin/usage?start_date=${startDate}&end_date=${endDate}&group_by=model`,
+      {
+        headers: { 
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    
+    if (res.ok) {
+      const data = await res.json();
+      
+      for (const usage of data.usage || data.data || []) {
+        const date = usage.date || format(new Date(), 'yyyy-MM-dd');
+        const model = usage.model || 'claude';
+        const inputTokens = usage.input_tokens || 0;
+        const outputTokens = usage.output_tokens || 0;
+        
+        if (inputTokens > 0 || outputTokens > 0) {
+          records.push({
+            id: `anthropic-${date}-${model}`,
+            provider: 'anthropic',
+            date,
+            model,
+            inputTokens,
+            outputTokens,
+            cost: calculateCost('anthropic', model, inputTokens, outputTokens),
+          });
+        }
+      }
+    } else {
+      console.error('Anthropic API error:', res.status, await res.text());
+    }
+  } catch (e) {
+    console.error('Failed to fetch Anthropic usage:', e);
+  }
+  
+  return records;
 }
 
 export async function syncProvider(

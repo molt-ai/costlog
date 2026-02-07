@@ -89,18 +89,36 @@ export default function Dashboard() {
 
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-6">
         {!hasProviders ? (
-          <div className="text-center py-24">
-            <div className="w-14 h-14 rounded-2xl bg-[#171717] border border-white/[0.06] flex items-center justify-center mx-auto mb-5">
-              <TrendingUp className="w-6 h-6 text-[#666]" />
+          <div className="text-center py-20">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-blue-500/20 flex items-center justify-center mx-auto mb-6">
+              <TrendingUp className="w-7 h-7 text-blue-400" />
             </div>
-            <h2 className="text-lg font-medium mb-2">Track your AI costs</h2>
-            <p className="text-[#666] text-sm mb-6 max-w-sm mx-auto">
-              Connect your OpenAI or Anthropic account to see your API spend in one dashboard.
+            <h2 className="text-xl font-semibold mb-2">Track your AI spend</h2>
+            <p className="text-[#888] text-sm mb-8 max-w-md mx-auto leading-relaxed">
+              Connect OpenAI or Anthropic in one click. See exactly where your API budget goes.
             </p>
-            <Link href="/settings" className="btn btn-primary">
-              <Plus className="w-4 h-4" />
-              Add Provider
-            </Link>
+            
+            {/* Quick connect buttons - high contrast CTAs */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-6">
+              <Link 
+                href="/settings" 
+                className="flex items-center gap-2 px-5 py-3 bg-emerald-500 hover:bg-emerald-400 text-white font-medium text-sm rounded-xl transition-colors"
+              >
+                <span className="w-2 h-2 rounded-full bg-white/80" />
+                Connect OpenAI
+              </Link>
+              <Link 
+                href="/settings" 
+                className="flex items-center gap-2 px-5 py-3 bg-amber-500 hover:bg-amber-400 text-white font-medium text-sm rounded-xl transition-colors"
+              >
+                <span className="w-2 h-2 rounded-full bg-white/80" />
+                Connect Anthropic
+              </Link>
+            </div>
+            
+            <p className="text-[#444] text-xs">
+              Takes about 30 seconds. No credit card required.
+            </p>
           </div>
         ) : (
           <>
